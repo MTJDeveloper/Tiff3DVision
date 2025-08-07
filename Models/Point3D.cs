@@ -9,6 +9,8 @@ namespace Tiff3DViewer.Models
         public float Z { get; set; }
         public Color Color { get; set; }
 
+        public Point3D() { }
+
         public Point3D(float x, float y, float z, Color color)
         {
             X = x;
@@ -17,4 +19,5 @@ namespace Tiff3DViewer.Models
             Color = color;
         }
     }
+
 }

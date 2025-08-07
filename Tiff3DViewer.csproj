@@ -33,7 +33,8 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="OpenTK" Version="4.7.6" />
+    <PackageReference Include="OpenTK" Version="3.3.3" />
+    <PackageReference Include="OpenTK.GLControl" Version="3.3.3" />
     <PackageReference Include="Accord.Imaging" Version="3.8.0" />
     <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
     <PackageReference Include="MIConvexHull" Version="1.1.19.1019" />
@@ -59,9 +60,12 @@
     <Compile Include="MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Models\MeshTriangle.cs" />
     <Compile Include="Models\Point3D.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Services\MeshBuilder.cs" />
+    <Compile Include="Services\MeshVertex.cs" />
     <Compile Include="Services\PointCloudBuilder.cs" />
     <Compile Include="Services\TiffLoader.cs" />
     <EmbeddedResource Include="MainForm.resx">
