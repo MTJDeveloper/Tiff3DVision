@@ -22,6 +22,9 @@ namespace Tiff3DViewer
         private GLControl glControl;
         private GLControl glMeshControl;
         private Bitmap currentImage;
+        private TrackBar trackThreshold;
+        private Label lblThreshold;
+
 
         private bool isLoaded = false;
         private float zoom = -300f;
@@ -55,7 +58,24 @@ namespace Tiff3DViewer
             pageSlider = new TrackBar { Location = new Point(480, 20), Width = 300, Minimum = 0, Maximum = 10 };
             pageSlider.Scroll += PageSlider_Scroll;
             this.Controls.Add(pageSlider);
+            lblThreshold = new Label
+            {
+                Text = "Threshold:",
+                Location = new Point(800, 20),
+                AutoSize = true
+            };
+            this.Controls.Add(lblThreshold);
 
+            trackThreshold = new TrackBar
+            {
+                Location = new Point(870, 15),
+                Width = 200,
+                Minimum = 0,
+                Maximum = 255,
+                Value = 30, // Default filter value
+                TickFrequency = 10
+            };
+            this.Controls.Add(trackThreshold);
             tabControl = new TabControl { Location = new Point(20, 60), Size = new Size(1220, 680) };
             tab2D = new TabPage("2D Viewer");
             tabPointCloud = new TabPage("Point Cloud Viewer");
@@ -203,11 +223,13 @@ namespace Tiff3DViewer
                 return;
             }
 
+            int threshold = trackThreshold?.Value ?? 30;
+
             pointCloud.Clear();
             for (int i = 0; i < tiffPages.Count; i++)
             {
                 Bitmap bmp = tiffPages[i];
-                var pagePoints = PointCloudBuilder.FromBitmap(bmp, i); // Depth = i
+                var pagePoints = PointCloudBuilder.FromBitmap(bmp, i, threshold);
                 pointCloud.AddRange(pagePoints);
             }
 

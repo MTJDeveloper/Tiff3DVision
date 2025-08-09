@@ -6,7 +6,7 @@ namespace Tiff3DViewer.Services
 {
     public static class PointCloudBuilder
     {
-        public static List<Point3D> FromBitmap(Bitmap bmp, int zIndex)
+        public static List<Point3D> FromBitmap(Bitmap bmp, int zIndex, int threshold)
         {
             var points = new List<Point3D>();
 
@@ -16,15 +16,21 @@ namespace Tiff3DViewer.Services
                 {
                     Color color = bmp.GetPixel(x, y);
 
-                    if (color.R + color.G + color.B == 0)
+                    // Convert to grayscale intensity
+                    int intensity = (color.R + color.G + color.B) / 3;
+
+                    // Skip pixels below threshold
+                    if (intensity < threshold)
                         continue;
 
-                    points.Add(new Point3D(x, y, zIndex, color)); 
+                    points.Add(new Point3D(x, y, zIndex, color));
                 }
             }
 
             return points;
         }
+
+
 
 
     }
