@@ -1,9 +1,10 @@
-﻿using System;
+﻿using OpenTK;
+using OpenTK.Graphics.OpenGL;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Threading.Tasks;
 using System.Windows.Forms;
-using OpenTK;
-using OpenTK.Graphics.OpenGL;
 using Tiff3DViewer.Models;
 using Tiff3DViewer.Services;
 
@@ -22,7 +23,9 @@ namespace Tiff3DViewer
         private GLControl glControl;
         private GLControl glMeshControl;
         private Bitmap currentImage;
-        private TrackBar trackThreshold;
+        private TrackBar trackLow;
+        private TrackBar trackHigh;
+        private CheckBox chkEdgeMode;
         private Label lblThreshold;
 
 
@@ -55,27 +58,54 @@ namespace Tiff3DViewer
 
             this.Controls.AddRange(new Control[] { btnOpen, btnConvert, btnGenerateMesh, btnExportPLY });
 
-            pageSlider = new TrackBar { Location = new Point(480, 20), Width = 300, Minimum = 0, Maximum = 10 };
+            pageSlider = new TrackBar
+            {
+                Location = new Point(480, 20),
+                Width = 300,
+                Minimum = 0,
+                Maximum = 10
+            };
             pageSlider.Scroll += PageSlider_Scroll;
             this.Controls.Add(pageSlider);
+
             lblThreshold = new Label
             {
-                Text = "Threshold:",
+                Text = "Thresholds:",
                 Location = new Point(800, 20),
                 AutoSize = true
             };
             this.Controls.Add(lblThreshold);
 
-            trackThreshold = new TrackBar
+            // Replace single trackThreshold with two sliders and a checkbox
+            trackLow = new TrackBar
             {
-                Location = new Point(870, 15),
-                Width = 200,
+                Location = new Point(880, 15),
+                Width = 120,
                 Minimum = 0,
                 Maximum = 255,
-                Value = 30, // Default filter value
-                TickFrequency = 10
+                Value = 30,
+                TickFrequency = 5
             };
-            this.Controls.Add(trackThreshold);
+            trackHigh = new TrackBar
+            {
+                Location = new Point(1010, 15),
+                Width = 120,
+                Minimum = 0,
+                Maximum = 255,
+                Value = 220,
+                TickFrequency = 5
+            };
+            chkEdgeMode = new CheckBox
+            {
+                Location = new Point(1140, 20),
+                Text = "Edge-only",
+                AutoSize = true
+            };
+
+            this.Controls.Add(trackLow);
+            this.Controls.Add(trackHigh);
+            this.Controls.Add(chkEdgeMode);
+
             tabControl = new TabControl { Location = new Point(20, 60), Size = new Size(1220, 680) };
             tab2D = new TabPage("2D Viewer");
             tabPointCloud = new TabPage("Point Cloud Viewer");
@@ -101,7 +131,7 @@ namespace Tiff3DViewer
             glMeshControl.BackColor = Color.Black;
             glMeshControl.Load += GlMeshControl_Load;
             glMeshControl.Paint += GlMeshControl_Paint;
-            glMeshControl.Resize += GlMeshControl_Resize; 
+            glMeshControl.Resize += GlMeshControl_Resize;
             glMeshControl.MouseClick += GlMeshControl_MouseClick;
             glMeshControl.MouseDown += GlControl_MouseDown;
             glMeshControl.MouseUp += GlControl_MouseUp;
@@ -215,7 +245,7 @@ namespace Tiff3DViewer
             }
         }
 
-        private void BtnConvert_Click(object sender, EventArgs e)
+        private async void BtnConvert_Click(object sender, EventArgs e)
         {
             if (tiffPages == null || tiffPages.Count == 0)
             {
@@ -223,21 +253,50 @@ namespace Tiff3DViewer
                 return;
             }
 
-            int threshold = trackThreshold?.Value ?? 30;
+            int low = trackLow.Value;
+            int high = trackHigh.Value;
+            // Decide FilterMode from checkbox: unchecked = BandPass (use both sliders),
+            // checked = HighPass (you can change to LowPass if you prefer).
+            PointCloudBuilder.FilterMode mode = chkEdgeMode.Checked ? PointCloudBuilder.FilterMode.HighPass : PointCloudBuilder.FilterMode.BandPass;
 
+            int stride = 2; // tune: 1 (full), 2, 4, 8...
             pointCloud.Clear();
-            for (int i = 0; i < tiffPages.Count; i++)
+
+            long totalPixels = (long)tiffPages[0].Width * tiffPages[0].Height * tiffPages.Count;
+            if (totalPixels > 200_000_000)
             {
-                Bitmap bmp = tiffPages[i];
-                var pagePoints = PointCloudBuilder.FromBitmap(bmp, i, threshold);
-                pointCloud.AddRange(pagePoints);
+                var r = MessageBox.Show("Huge input. Continue with downsampling? (OK=downsample stride=4, Cancel=abort)", "Large input", MessageBoxButtons.OKCancel);
+                if (r == DialogResult.OK) stride = 4;
+                else return;
             }
+
+            // background processing
+            await Task.Run(() =>
+            {
+                for (int i = 0; i < tiffPages.Count; i++)
+                {
+                    var page = tiffPages[i];
+                    var pts = PointCloudBuilder.FromBitmap(page, i, low, high, mode, stride);
+                    lock (pointCloud)
+                    {
+                        foreach (var p in pts)
+                        {
+                            pointCloud.Add(new Point3D { X = p.X, Y = p.Y, Z = p.Z, Color = Color.FromArgb(p.R, p.G, p.B) });
+                        }
+                    }
+                    this.Invoke(new Action(() => {
+                        // optional: update a progress bar or label
+                        // e.g. progressLabel.Text = $"Processed {i+1}/{tiffPages.Count}";
+                    }));
+                }
+            });
 
             glControl.Focus();
             glControl.Invalidate();
 
             MessageBox.Show($"3D point cloud generated from {tiffPages.Count} pages with total {pointCloud.Count} points.");
         }
+
         private void BtnGenerateMesh_Click(object sender, EventArgs e)
         {
             if (pointCloud == null || pointCloud.Count == 0)
@@ -440,6 +499,22 @@ namespace Tiff3DViewer
 
             glMeshControl.SwapBuffers();
         }
+
+        private Bitmap BuildMaskPreview(Bitmap src, int low, int high, bool edgeMode)
+        {
+            var mode = edgeMode ? PointCloudBuilder.FilterMode.HighPass : PointCloudBuilder.FilterMode.BandPass;
+            Bitmap mask = new Bitmap(src.Width, src.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(mask)) g.Clear(Color.Transparent);
+
+            var pts = PointCloudBuilder.FromBitmap(src, 0, low, high, mode, 1);
+            foreach (var p in pts)
+            {
+                // draw a small dot (slow for large images; OK for preview)
+                mask.SetPixel((int)p.X, (int)(src.Height - p.Y), Color.FromArgb(255, p.R, p.G, p.B));
+            }
+            return mask;
+        }
+
 
     }
 }
